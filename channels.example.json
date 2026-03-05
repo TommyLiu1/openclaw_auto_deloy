@@ -1,0 +1,29 @@
+{
+  "feishu": {
+    "enabled": true,
+    "accounts": {
+      "main": {
+        "appId": "cli_xxx",
+        "appSecret": "your_app_secret"
+      }
+    }
+  },
+  "wecom": {
+    "enabled": true,
+    "corpId": "your_corp_id",
+    "agentId": "your_agent_id",
+    "secret": "your_secret",
+    "token": "your_token",
+    "encodingAesKey": "your_aes_key"
+  },
+  "dingtalk": {
+    "enabled": true,
+    "appKey": "your_app_key",
+    "appSecret": "your_app_secret"
+  },
+  "qq": {
+    "enabled": true,
+    "appId": "your_app_id",
+    "token": "your_token"
+  }
+}
