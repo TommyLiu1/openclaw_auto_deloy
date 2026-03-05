@@ -127,7 +127,7 @@ def create_app():
     return app
 
 
-def run_server(host="0.0.0.0", port=8080, debug=False):
+def run_server(host="0.0.0.0", port=8090, debug=False):
     _init_server_logger()
     logger.info("License 授权服务启动 {}:{}", host, port)
     app = create_app()
@@ -138,7 +138,7 @@ if __name__ == "__main__":
     import argparse
     p = argparse.ArgumentParser()
     p.add_argument("--host", default="0.0.0.0")
-    p.add_argument("--port", type=int, default=8080)
+    p.add_argument("--port", type=int, default=8090)
     p.add_argument("--debug", action="store_true")
     args = p.parse_args()
     run_server(host=args.host, port=args.port, debug=args.debug)
