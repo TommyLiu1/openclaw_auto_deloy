@@ -19,8 +19,8 @@ COPY license_server/ /app/license_server/
 
 ENV PYTHONPATH=/app
 
-EXPOSE 8080
+EXPOSE 8090
 
 VOLUME ["/data"]
 
-CMD ["python", "-m", "license_server.app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["python", "-m", "license_server.app", "--host", "0.0.0.0", "--port", "8090"]
