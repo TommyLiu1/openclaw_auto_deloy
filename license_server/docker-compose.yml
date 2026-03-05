@@ -1,0 +1,21 @@
+# License 授权服务 - 容器化部署
+# 在项目根目录执行: docker compose -f license_server/docker-compose.yml up -d
+# （context 为项目根，以便 COPY license_server/ 等路径正确）
+
+services:
+  license-server:
+    build:
+      context: ..
+      dockerfile: license_server/Dockerfile
+    image: openclaw-license-server:latest
+    container_name: openclaw-license
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - license-data:/data
+    environment:
+      - OPENCLAW_LICENSE_DATA=/data
+
+volumes:
+  license-data:

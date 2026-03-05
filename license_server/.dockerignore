@@ -1,0 +1,9 @@
+__pycache__
+*.pyc
+*.pyo
+.git
+.dockerignore
+docker-compose.yml
+logs/
+*.log
+licenses.json
