@@ -14,7 +14,7 @@ from typing import Optional, Tuple
 from loguru import logger
 
 # 授权服务器地址，可通过环境变量 OPENCLAW_LICENSE_SERVER 覆盖
-DEFAULT_LICENSE_SERVER_URL = os.environ.get("OPENCLAW_LICENSE_SERVER", "http://127.0.0.1:8080")
+DEFAULT_LICENSE_SERVER_URL = os.environ.get("OPENCLAW_LICENSE_SERVER", "http://8.134.83.168:8090")
 
 
 def _ensure_utf8_stdout():

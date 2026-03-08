@@ -96,8 +96,8 @@ def cmd_deploy(args: argparse.Namespace) -> int:
         license_mod.save_license_to_file(license_key)
         logger.info("已保存 License 到本地")
     logger.info("开始执行一键部署")
-    # 未指定 --config 时，使用与可执行文件同目录下的 channels.json（若存在）
-    config_path = args.config or get_default_config_path()
+    # 仅当显式传入 --config 时使用通道配置；不默认查找 channels.json
+    config_path = getattr(args, "config", None)
     if config_path and os.path.isfile(config_path):
         logger.info("使用通道配置: {}", config_path)
     ok, msg = deploy.run_deploy(config_path=config_path)
@@ -144,7 +144,7 @@ def main() -> int:
     parser.add_argument(
         "--config", "-c",
         metavar="PATH",
-        help="通道配置文件路径（JSON）。未指定时默认读取与 exe 同目录下的 channels.json",
+        help="通道配置文件路径（JSON）。未指定时不加载通道配置，仅按 OpenClaw-Docker-CN-IM 方式启动容器",
     )
 
     args = parser.parse_args()

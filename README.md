@@ -5,7 +5,7 @@
 ## 功能
 
 - **服务器端 License 验证**：预置有效 License Key（含有效期），用户启动工具输入 Key 后，将本机 machine_id 上传至服务器激活；一台设备只能绑定一个 Key，绑定后仅该机器可验证通过。
-- **一键部署**：验证通过后，优先使用 Docker 部署 OpenClaw，无 Docker 时在 Linux/Mac 上可走 Node.js 安装。
+- **一键部署**：验证通过后，优先使用 Docker 部署 OpenClaw，无 Docker 时在 Linux/Mac 上可走 Node.js 安装。**若本机未安装 Docker**，工具会先自动下载并启动 Docker 安装程序，完成安装后重新运行即可部署。
 - **跨平台**：Windows / macOS / Linux 统一命令行入口。
 - **日志**：工具端与服务端均使用 **loguru** 记录日志，便于排查问题。
 - **可执行文件**：工具端可用 **PyInstaller** 打包为单文件 exe（Windows）/ 可执行文件（Mac/Linux），用户**双击即可运行**，无需安装 Python。
@@ -101,14 +101,45 @@ openclaw-deploy --machine-id
 
 工具需连接授权服务器进行激活/验证。本仓库提供参考实现，部署后由授权方维护 License 与绑定关系。
 
-### 安装与运行
+### 方式一：容器化部署（推荐）
+
+在**项目根目录**执行：
+
+```bash
+# 使用 docker compose 构建并启动
+docker compose -f license_server/docker-compose.yml up -d
+```
+
+或仅用 Docker 构建与运行：
+
+```bash
+docker build -t openclaw-license-server -f license_server/Dockerfile .
+docker run -d -p 8090:8090 -v license-data:/data --name openclaw-license openclaw-license-server
+```
+
+- 服务监听 **8090** 端口，数据持久化在 volume `license-data`（对应容器内 `/data`）。
+- 环境变量 `OPENCLAW_LICENSE_DATA=/data` 已在镜像内设置，无需修改。
+
+**在容器化部署下预置 License**：使用同一镜像、挂载同一 volume 执行一次性容器：
+
+```bash
+# 生成新 Key，默认有效期至 2026-12-31
+docker run --rm -v license-data:/data -e OPENCLAW_LICENSE_DATA=/data openclaw-license-server python -m license_server.add_license
+
+# 指定过期时间或自定义 Key
+docker run --rm -v license-data:/data -e OPENCLAW_LICENSE_DATA=/data openclaw-license-server python -m license_server.add_license --expires "2027-06-30 23:59:59" --key "MY-KEY-001"
+```
+
+将输出的 License Key 发给用户即可。
+
+### 方式二：本机直接运行
 
 ```bash
 pip install -r license_server/requirements.txt
-python -m license_server.app --host 0.0.0.0 --port 8080
+python -m license_server.app --host 0.0.0.0 --port 8090
 ```
 
-默认监听 `http://0.0.0.0:8080`。数据文件为当前目录下 `licenses.json`（可通过环境变量 `OPENCLAW_LICENSE_DATA` 指定目录）。服务端使用 **loguru** 记录日志，日志文件位于该数据目录下的 `logs/app.log`。
+默认监听 `http://0.0.0.0:8090`。数据文件为当前目录下 `licenses.json`（可通过环境变量 `OPENCLAW_LICENSE_DATA` 指定目录）。服务端使用 **loguru** 记录日志，日志文件位于该数据目录下的 `logs/app.log`。
 
 ### 预置 License Key（含有效期）
 
@@ -129,7 +160,7 @@ python -m license_server.add_license --key "MY-CUSTOM-KEY-001" --expires "2026-1
 
 ### 客户端指定服务器地址
 
-默认请求 `http://127.0.0.1:8080`。若授权服务部署在其他地址，请设置环境变量：
+默认请求 `http://127.0.0.1:8090`。若授权服务部署在其他地址，请设置环境变量：
 
 ```bash
 export OPENCLAW_LICENSE_SERVER=https://your-license-server.com
@@ -140,8 +171,7 @@ openclaw-deploy --license "你的License_Key"
 
 ## 部署结果说明
 
-- **Docker 部署**：容器名 `openclaw`，管理界面为 `http://127.0.0.1:18789/`。首次需在容器内完成 onboarding：  
-  `docker exec -it openclaw openclaw onboard`
+- **Docker 部署**：优先使用 **openclaw_deploy 目录下的 docker-compose.yml** 与 **同目录下的 .env 文件** 进行部署（`docker compose -f docker-compose.yml --env-file .env up -d`）。镜像、模型、通道、端口等均由 .env 中的变量决定；容器名为 `openclaw-gateway`，管理界面端口见 .env 中的 `OPENCLAW_GATEWAY_PORT`（默认 18789）。若未找到 docker-compose.yml，则回退为单容器 `docker run`（容器名 `openclaw`，端口 18789）。打包为 exe 时，请将 docker-compose.yml 与 .env 放在与 exe 同一目录。
 - **Node 部署**（Linux/Mac）：全局安装 `openclaw`，端口 18789，使用系统服务或 `openclaw` 命令管理。
 
 ## 项目结构
@@ -158,10 +188,13 @@ openclaw_tool/
 │   ├── logger.py              # loguru 日志配置
 │   └── machine_id.py          # 本机机器码
 ├── channels.example.json     # 通道配置示例（feishu/wecom/dingtalk/qq）
-├── license_server/            # 服务端：预置 License + 绑定 machine_id
+├── license_server/            # 服务端：预置 License + 绑定 machine_id，支持容器化部署
 │   ├── __init__.py
 │   ├── app.py                # Flask 服务，/api/activate，loguru 日志
-│   ├── add_license.py         # 预置 License Key（含有效期）
+│   ├── add_license.py        # 预置 License Key（含有效期）
+│   ├── Dockerfile            # 镜像构建
+│   ├── docker-compose.yml    # 一键启动容器
+│   ├── .dockerignore
 │   └── requirements.txt
 ├── openclaw_deploy.spec      # PyInstaller 打包配置
 ├── build_exe.py              # 一键打包脚本
