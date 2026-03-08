@@ -8,7 +8,7 @@ import json
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from loguru import logger
 
@@ -53,6 +53,20 @@ def _save_data(data):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
+def _binding_machine_id(raw: Any) -> str:
+    """从 bindings[key] 取值中解析出 machine_id，兼容旧格式（仅存字符串）。"""
+    if isinstance(raw, dict):
+        return (raw.get("machine_id") or "").strip()
+    return (raw or "").strip()
+
+
+def _binding_bound_at(raw: Any) -> Optional[str]:
+    """从 bindings[key] 取值中解析出绑定时间，旧数据无时间则返回 None。"""
+    if isinstance(raw, dict) and raw.get("bound_at"):
+        return str(raw["bound_at"])[:19]
+    return None
+
+
 def activate(license_key: str, machine_id: str) -> Tuple[bool, str]:
     """
     激活或验证：若 Key 有效且未过期，
@@ -89,16 +103,48 @@ def activate(license_key: str, machine_id: str) -> Tuple[bool, str]:
 
     current_binding = bindings.get(key)
     if current_binding is None:
-        bindings[key] = mid
+        bindings[key] = {
+            "machine_id": mid,
+            "bound_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        }
         data["bindings"] = bindings
         _save_data(data)
         logger.info("License 激活成功 key={} machine_id={}", key[:8] + "...", mid[:16] + "...")
         return True, "激活成功，已绑定本机"
-    if current_binding == mid:
+    if _binding_machine_id(current_binding) == mid:
         logger.debug("License 验证通过 key={} machine_id={}", key[:8] + "...", mid[:16] + "...")
         return True, "验证通过，已绑定本机"
     logger.warning("License 已绑定其他设备 key={} 当前请求 machine_id={}", key[:8] + "...", mid[:16] + "...")
     return False, "此 License 已绑定到其他设备，一台设备只能绑定一个 Key"
+
+
+def get_bindings_stats() -> List[Dict[str, Any]]:
+    """
+    返回所有 License 绑定统计：machine_id、绑定时间等。
+    用于后台查看哪些机器在何时绑定了 License。
+    """
+    data = _load_data()
+    bindings = data.get("bindings", {})
+    licenses = data.get("licenses", {})
+    result = []
+    for key, raw in bindings.items():
+        mid = _binding_machine_id(raw)
+        if not mid:
+            continue
+        bound_at = _binding_bound_at(raw)
+        # License Key 脱敏：前 8 位 + ...
+        key_masked = (key[:8] + "...") if len(key) > 8 else key
+        info = licenses.get(key, {})
+        expires_at = info.get("expires_at")
+        result.append({
+            "license_key_masked": key_masked,
+            "machine_id": mid,
+            "bound_at": bound_at,
+            "expires_at": expires_at,
+        })
+    # 按绑定时间倒序（有时间的在前，无时间的在后）
+    result.sort(key=lambda x: (x["bound_at"] or ""), reverse=True)
+    return result
 
 
 def create_app():
@@ -123,6 +169,16 @@ def create_app():
     @app.route("/api/health", methods=["GET"])
     def health():
         return jsonify({"ok": True})
+
+    @app.route("/api/stats/bindings", methods=["GET"])
+    def api_stats_bindings():
+        """统计：哪些 machine_id 在何时绑定了 License Key（Key 脱敏）。"""
+        try:
+            items = get_bindings_stats()
+            return jsonify({"ok": True, "bindings": items, "total": len(items)})
+        except Exception as e:
+            logger.exception("统计绑定列表失败: {}", e)
+            return jsonify({"ok": False, "message": str(e)}), 500
 
     return app
 

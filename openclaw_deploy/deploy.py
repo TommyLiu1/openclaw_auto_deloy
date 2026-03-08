@@ -11,6 +11,7 @@ import platform
 import subprocess
 import sys
 import tempfile
+import time
 from typing import Optional, Tuple
 
 from loguru import logger
@@ -45,9 +46,40 @@ def _run(cmd: list, timeout: int = 120, shell: bool = False) -> Tuple[bool, str]
         return False, str(e)
 
 
+# macOS 未安装 Docker 时提示用户前往该页面下载安装
+DOCKER_DESKTOP_URL = "https://www.docker.com/products/docker-desktop/"
+
+
 def has_docker() -> bool:
     ok, _ = _run(["docker", "info"])
     return ok
+
+
+def _macos_wait_for_docker(timeout_seconds: int = 600) -> Tuple[bool, str]:
+    """
+    macOS 专用：提示用户到 Docker Desktop 页面下载安装，安装并启动后等待 Docker 可用。
+    每 5 秒检测一次，超时返回 (False, 提示信息)，检测到 Docker 返回 (True, "")。
+    """
+    logger.warning(
+        "未检测到 Docker。请访问 {} 下载并安装 Docker Desktop，安装完成后请启动 Docker Desktop。",
+        DOCKER_DESKTOP_URL,
+    )
+    print("未检测到 Docker。请访问以下地址下载并安装 Docker Desktop：", file=sys.stderr)
+    print(f"  {DOCKER_DESKTOP_URL}", file=sys.stderr)
+    print("安装完成后请启动 Docker Desktop，本工具将自动检测并继续部署。", file=sys.stderr)
+    interval = 5
+    elapsed = 0
+    while elapsed < timeout_seconds:
+        if has_docker():
+            logger.info("已检测到 Docker，继续部署")
+            return True, ""
+        time.sleep(interval)
+        elapsed += interval
+        logger.info("等待 Docker 启动…（已等待 {} 秒）", elapsed)
+    return False, (
+        f"在 {timeout_seconds} 秒内未检测到 Docker 启动。"
+        f"请确认已安装并启动 Docker Desktop（{DOCKER_DESKTOP_URL}）后重新运行本工具。"
+    )
 
 
 def has_node22() -> bool:
@@ -404,12 +436,19 @@ def run_deploy(config_path: Optional[str] = None) -> Tuple[bool, str]:
     if use_docker:
         logger.debug("已检测到 Docker")
         ok, msg, container_name, config_path_in_container = deploy_with_docker()
+    elif platform.system().lower() == "darwin" and not use_docker:
+        # macOS：未安装 Docker 时提示到 Docker Desktop 页面下载安装，启动后等待并继续部署
+        wait_ok, wait_err = _macos_wait_for_docker()
+        if not wait_ok:
+            return False, wait_err
+        use_docker = True
+        ok, msg, container_name, config_path_in_container = deploy_with_docker()
     elif has_node22() and platform.system().lower() != "windows":
         # Node 方式仅用于 Linux/Mac；Windows 必须使用 Docker
         logger.debug("已检测到 Node.js 22+，使用 Node 方式部署")
         ok, msg = deploy_with_node()
     else:
-        # Windows 未装 Docker 或 本机既无 Docker 也无 Node22：先尝试自动下载并启动 Docker 安装程序
+        # Windows/Linux 未装 Docker 或 本机既无 Docker 也无 Node22：尝试自动下载并启动 Docker 安装程序（或提示手动安装）
         logger.warning("未检测到 Docker，尝试自动下载并启动安装程序")
         install_ok, install_msg = docker_inst.download_and_launch_docker_installer()
         if install_ok:
